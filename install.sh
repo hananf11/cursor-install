@@ -1,9 +1,13 @@
 #!/bin/bash
 
 # install.sh - Script to download, extract, and install an AppImage
-# Usage: ./install.sh [/path/to/your.AppImage]
+# Usage: ./install.sh [--local] [/path/to/your.AppImage]
 
 set -e  # Exit on any error
+
+# Global variables
+LOCAL_INSTALL=false
+SCRIPT_PATH=""
 
 # Function to detect platform
 detect_platform() {
@@ -26,10 +30,37 @@ detect_platform() {
 
 API_URL_BASE="https://cursor.com/api/download?releaseTrack=stable"
 
+# Function to get installation base directory
+get_install_base() {
+  if [ "$LOCAL_INSTALL" = true ]; then
+    echo "$HOME/.local"
+  else
+    echo "/opt"
+  fi
+}
+
+# Function to get bin directory
+get_bin_dir() {
+  if [ "$LOCAL_INSTALL" = true ]; then
+    echo "$HOME/.local/bin"
+  else
+    echo "/usr/local/bin"
+  fi
+}
+
+# Function to get applications directory
+get_applications_dir() {
+  if [ "$LOCAL_INSTALL" = true ]; then
+    echo "$HOME/.local/share/applications"
+  else
+    echo "/usr/share/applications"
+  fi
+}
+
 # Function to check if the script is run as root
 check_root() {
-  if [ "$EUID" -ne 0 ]; then
-    echo "Please run as root (with sudo)"
+  if [ "$LOCAL_INSTALL" = false ] && [ "$EUID" -ne 0 ]; then
+    echo "Please run as root (with sudo) or use --local flag for user installation"
     exit 1
   fi
 }
@@ -79,7 +110,8 @@ extract_appimage() {
 
 # Function to uninstall existing installation
 uninstall_existing() {
-  local uninstall_script="/usr/local/bin/uninstall-$APP_DIR"
+  local bin_dir=$(get_bin_dir)
+  local uninstall_script="$bin_dir/uninstall-$APP_DIR"
   if [ -x "$uninstall_script" ]; then
     echo "Existing installation found. Uninstalling..."
     "$uninstall_script"
@@ -88,7 +120,8 @@ uninstall_existing() {
 
 # Function to install the application
 install_app() {
-  mkdir -p "/opt/$APP_DIR"
+  local install_base=$(get_install_base)
+  mkdir -p "$install_base/$APP_DIR"
 
   echo "Creating file tracking list for easy uninstallation..."
   local exclude_pattern=""
@@ -98,51 +131,117 @@ install_app() {
   done
 
   if [ -n "$exclude_pattern" ]; then
-    find usr -type f | grep -v -E "$exclude_pattern" > "/opt/$APP_DIR/installed_files.txt"
+    find usr -type f | grep -v -E "$exclude_pattern" > "$install_base/$APP_DIR/installed_files.txt"
   else
-    find usr -type f > "/opt/$APP_DIR/installed_files.txt"
+    find usr -type f > "$install_base/$APP_DIR/installed_files.txt"
   fi
 
   if [ ${#APP_SPECIFIC_DIRS[@]} -gt 0 ]; then
-    printf "%s\n" "${APP_SPECIFIC_DIRS[@]}" > "/opt/$APP_DIR/app_directories.txt"
+    printf "%s\n" "${APP_SPECIFIC_DIRS[@]}" > "$install_base/$APP_DIR/app_directories.txt"
   fi
 
-  echo "Copying files to system directories..."
-  cp -r usr/* /usr/
+  if [ "$LOCAL_INSTALL" = true ]; then
+    echo "Copying files to user directories..."
+    mkdir -p "$HOME/.local"
+    cp -r usr/* "$HOME/.local/"
+  else
+    echo "Copying files to system directories..."
+    cp -r usr/* /usr/
+  fi
+}
+
+# Function to copy install script
+copy_install_script() {
+  local bin_dir=$(get_bin_dir)
+  local install_script="$bin_dir/install-$APP_DIR"
+  echo "Copying install script to $install_script"
+  mkdir -p "$bin_dir"
+  cp "$SCRIPT_PATH" "$install_script"
+  chmod +x "$install_script"
 }
 
 # Function to create uninstall script
 create_uninstall_script() {
-  local uninstall_script="/usr/local/bin/uninstall-$APP_DIR"
+  local bin_dir=$(get_bin_dir)
+  local install_base=$(get_install_base)
+  local uninstall_script="$bin_dir/uninstall-$APP_DIR"
   echo "Creating uninstall script at $uninstall_script"
+  mkdir -p "$bin_dir"
+  
   cat << EOF > "$uninstall_script"
 #!/bin/bash
 
-if [ "\$EUID" -ne 0 ]; then
-  echo "Please run as root (with sudo)"
+LOCAL_INSTALL=${LOCAL_INSTALL}
+
+# Function to get installation base directory
+get_install_base() {
+  if [ "\$LOCAL_INSTALL" = true ]; then
+    echo "\$HOME/.local"
+  else
+    echo "/opt"
+  fi
+}
+
+# Function to get bin directory
+get_bin_dir() {
+  if [ "\$LOCAL_INSTALL" = true ]; then
+    echo "\$HOME/.local/bin"
+  else
+    echo "/usr/local/bin"
+  fi
+}
+
+# Function to get applications directory
+get_applications_dir() {
+  if [ "\$LOCAL_INSTALL" = true ]; then
+    echo "\$HOME/.local/share/applications"
+  else
+    echo "/usr/share/applications"
+  fi
+}
+
+if [ "\$LOCAL_INSTALL" = false ] && [ "\$EUID" -ne 0 ]; then
+  echo "Please run as root (with sudo) or use --local flag for user installation"
   exit 1
 fi
 
 echo "Uninstalling $APP_NAME..."
 
-if [ -f "/opt/$APP_DIR/app_directories.txt" ]; then
+local install_base=\$(get_install_base)
+local bin_dir=\$(get_bin_dir)
+
+if [ -f "\$install_base/$APP_DIR/app_directories.txt" ]; then
   echo "Removing app-specific directories..."
   while read -r dir; do
-    [ -d "\$dir" ] && rm -rf "\$dir"
-  done < "/opt/$APP_DIR/app_directories.txt"
+    if [ "\$LOCAL_INSTALL" = true ]; then
+      local_user_dir="\$HOME/.local/\${dir#/usr/}"
+      [ -d "\$local_user_dir" ] && rm -rf "\$local_user_dir"
+    else
+      [ -d "\$dir" ] && rm -rf "\$dir"
+    fi
+  done < "\$install_base/$APP_DIR/app_directories.txt"
 fi
 
-if [ -f "/opt/$APP_DIR/installed_files.txt" ]; then
+if [ -f "\$install_base/$APP_DIR/installed_files.txt" ]; then
   echo "Removing individual files..."
   while read -r file; do
-    [ -f "/\$file" ] && rm "/\$file"
-  done < "/opt/$APP_DIR/installed_files.txt"
+    if [ "\$LOCAL_INSTALL" = true ]; then
+      local_user_file="\$HOME/.local/\${file#/usr/}"
+      [ -f "\$local_user_file" ] && rm "\$local_user_file"
+    else
+      [ -f "/\$file" ] && rm "/\$file"
+    fi
+  done < "\$install_base/$APP_DIR/installed_files.txt"
 fi
 
-rm -f "$uninstall_script"
-rm -rf "/opt/$APP_DIR"
-update-desktop-database &>/dev/null || true
-update-mime-database /usr/share/mime &>/dev/null || true
+rm -f "\$uninstall_script"
+rm -f "\$bin_dir/install-$APP_DIR"
+rm -rf "\$install_base/$APP_DIR"
+
+if [ "\$LOCAL_INSTALL" = false ]; then
+  update-desktop-database &>/dev/null || true
+  update-mime-database /usr/share/mime &>/dev/null || true
+fi
 
 echo "$APP_NAME has been uninstalled."
 EOF
@@ -151,45 +250,114 @@ EOF
 
 # Function to update desktop entry
 update_desktop_entry() {
+  local applications_dir=$(get_applications_dir)
+  local bin_dir=$(get_bin_dir)
+  
   for desktop_file in $DESKTOP_FILES; do
-    local system_desktop_file="/usr/share/applications/$(basename "$desktop_file")"
+    local system_desktop_file="$applications_dir/$(basename "$desktop_file")"
     
     if [ -f "$system_desktop_file" ]; then
-      echo "Adding uninstall action to $system_desktop_file"
+      echo "Adding uninstall and update actions to $system_desktop_file"
       
-      if grep -q "^Actions=" "$system_desktop_file"; then
-        grep -q "^Actions=.*Uninstall" "$system_desktop_file" || \
-          sed -i '/^Actions=/ s/;*$/;Uninstall;/' "$system_desktop_file"
+      # Add Actions line if it doesn't exist
+      if ! grep -q "^Actions=" "$system_desktop_file"; then
+        echo "Actions=Uninstall;Update;" >> "$system_desktop_file"
       else
-        echo "Actions=Uninstall;" >> "$system_desktop_file"
+        # Add Uninstall action if not present
+        if ! grep -q "^Actions=.*Uninstall" "$system_desktop_file"; then
+          sed -i '/^Actions=/ s/;*$/;Uninstall;/' "$system_desktop_file"
+        fi
+        # Add Update action if not present
+        if ! grep -q "^Actions=.*Update" "$system_desktop_file"; then
+          sed -i '/^Actions=/ s/;*$/;Update;/' "$system_desktop_file"
+        fi
       fi
 
+      # Add Uninstall action section if not present
       if ! grep -q "\[Desktop Action Uninstall\]" "$system_desktop_file"; then
-        cat << EOF >> "$system_desktop_file"
+        if [ "$LOCAL_INSTALL" = true ]; then
+          cat << EOF >> "$system_desktop_file"
 
 [Desktop Action Uninstall]
 Name=Uninstall $APP_NAME
-Exec=pkexec $UNINSTALL_SCRIPT
+Exec=$bin_dir/uninstall-$APP_DIR
 Icon=edit-delete
 EOF
+        else
+          cat << EOF >> "$system_desktop_file"
+
+[Desktop Action Uninstall]
+Name=Uninstall $APP_NAME
+Exec=pkexec $bin_dir/uninstall-$APP_DIR
+Icon=edit-delete
+EOF
+        fi
+      fi
+
+      # Add Update action section if not present
+      if ! grep -q "\[Desktop Action Update\]" "$system_desktop_file"; then
+        if [ "$LOCAL_INSTALL" = true ]; then
+          cat << EOF >> "$system_desktop_file"
+
+[Desktop Action Update]
+Name=Update $APP_NAME
+Exec=$bin_dir/install-$APP_DIR
+Icon=system-software-update
+EOF
+        else
+          cat << EOF >> "$system_desktop_file"
+
+[Desktop Action Update]
+Name=Update $APP_NAME
+Exec=pkexec $bin_dir/install-$APP_DIR
+Icon=system-software-update
+EOF
+        fi
       fi
     fi
   done
 }
 
 # Main logic
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --local)
+      LOCAL_INSTALL=true
+      shift
+      ;;
+    -*)
+      echo "Unknown option: $1"
+      echo "Usage: $0 [--local] [/path/to/your.AppImage]"
+      exit 1
+      ;;
+    *)
+      APPIMAGE_PATH="$1"
+      shift
+      ;;
+  esac
+done
+
+# Store the original script path before changing directories
+SCRIPT_PATH=$(readlink -f "$0")
+
 check_root
 detect_platform  # Detect platform before proceeding
 
-if [ $# -eq 1 ]; then
-  APPIMAGE_PATH="$1"
+if [ "$LOCAL_INSTALL" = true ]; then
+  echo "Installing in local user directory ($HOME/.local)"
+else
+  echo "Installing in system directory (requires root privileges)"
+fi
+
+if [ -n "$APPIMAGE_PATH" ]; then
   [[ ! "$APPIMAGE_PATH" = /* ]] && APPIMAGE_PATH="$PWD/$APPIMAGE_PATH"
   echo "Using provided AppImage at: $APPIMAGE_PATH"
 elif [ $# -eq 0 ]; then
   download_appimage
   echo "Using downloaded AppImage at: $APPIMAGE_PATH for platform: $PLATFORM"
 else
-  echo "Usage: $0 [/path/to/your.AppImage]"
+  echo "Usage: $0 [--local] [/path/to/your.AppImage]"
   exit 1
 fi
 
@@ -221,15 +389,28 @@ for dir in usr/share/*; do
 done
 
 install_app
+copy_install_script
 create_uninstall_script
 update_desktop_entry
 
-echo "Updating desktop database..."
-update-desktop-database || true
+if [ "$LOCAL_INSTALL" = false ]; then
+  echo "Updating desktop database..."
+  update-desktop-database || true
+fi
 
 echo "Cleaning up temporary files..."
 rm -rf "$TEMP_DIR"
 
+bin_dir=$(get_bin_dir)
 echo "Installation complete! You can now run $APP_NAME from your application menu or terminal."
 echo "To uninstall, right-click on the application in your menu and select 'Uninstall'"
-echo "Or run: sudo /usr/local/bin/uninstall-$APP_DIR"
+echo "To update, right-click on the application in your menu and select 'Update'"
+
+if [ "$LOCAL_INSTALL" = true ]; then
+  echo "Or run: $bin_dir/uninstall-$APP_DIR (to uninstall)"
+  echo "Or run: $bin_dir/install-$APP_DIR (to update)"
+  echo "Note: This is a local installation in your home directory."
+else
+  echo "Or run: sudo $bin_dir/uninstall-$APP_DIR (to uninstall)"
+  echo "Or run: sudo $bin_dir/install-$APP_DIR (to update)"
+fi
