@@ -121,6 +121,7 @@ uninstall_existing() {
 # Function to install the application
 install_app() {
   local install_base=$(get_install_base)
+  local bin_dir=$(get_bin_dir)
   mkdir -p "$install_base/$APP_DIR"
 
   echo "Creating file tracking list for easy uninstallation..."
@@ -147,6 +148,19 @@ install_app() {
   else
     echo "Copying files to system directories..."
     cp -r usr/* /usr/
+  fi
+
+  # Create symbolic link for the cursor binary
+  if [ -f "/usr/share/cursor/bin/cursor" ]; then
+    echo "Creating symbolic link for cursor binary..."
+    mkdir -p "$bin_dir"
+    ln -sf "/usr/share/cursor/bin/cursor" "$bin_dir/cursor"
+    echo "cursor binary linked to $bin_dir/cursor"
+  elif [ -f "$HOME/.local/share/cursor/bin/cursor" ] && [ "$LOCAL_INSTALL" = true ]; then
+    echo "Creating symbolic link for cursor binary..."
+    mkdir -p "$bin_dir"
+    ln -sf "$HOME/.local/share/cursor/bin/cursor" "$bin_dir/cursor"
+    echo "cursor binary linked to $bin_dir/cursor"
   fi
 }
 
@@ -207,8 +221,8 @@ fi
 
 echo "Uninstalling $APP_NAME..."
 
-local install_base=\$(get_install_base)
-local bin_dir=\$(get_bin_dir)
+install_base=\$(get_install_base)
+bin_dir=\$(get_bin_dir)
 
 if [ -f "\$install_base/$APP_DIR/app_directories.txt" ]; then
   echo "Removing app-specific directories..."
@@ -234,6 +248,12 @@ if [ -f "\$install_base/$APP_DIR/installed_files.txt" ]; then
   done < "\$install_base/$APP_DIR/installed_files.txt"
 fi
 
+# Remove symbolic link for cursor binary
+if [ -L "\$bin_dir/cursor" ]; then
+  echo "Removing cursor binary symbolic link..."
+  rm -f "\$bin_dir/cursor"
+fi
+
 # Remove install script
 rm -f "\$bin_dir/install-$APP_DIR"
 
@@ -249,7 +269,7 @@ echo "$APP_NAME has been uninstalled."
 
 # Remove the uninstall script last (self-deletion)
 # Use a background process to ensure the script can complete before self-deletion
-( sleep 0.1; rm -f "\$uninstall_script" ) &
+( sleep 0.1; rm -f "$uninstall_script" ) &
 EOF
   chmod +x "$uninstall_script"
 }
