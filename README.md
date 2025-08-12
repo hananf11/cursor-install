@@ -7,20 +7,12 @@ Installing cursor on linux is unessasarly hard, this script makes it super easy.
 
 **System-wide installation:**
 ```bash
-# Using curl
 curl -sSL https://raw.githubusercontent.com/hananf11/cursor-install/main/install.sh | sudo bash
-
-# Using wget
-wget -qO- https://raw.githubusercontent.com/hananf11/cursor-install/main/install.sh | sudo bash
 ```
 
 **User-specific installation:**
 ```bash
-# Using curl
 curl -sSL https://raw.githubusercontent.com/hananf11/cursor-install/main/install.sh | bash -- --local
-
-# Using wget
-wget -qO- https://raw.githubusercontent.com/hananf11/cursor-install/main/install.sh | bash -- --local
 ```
 
 ## Quick Start

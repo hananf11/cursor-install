@@ -170,7 +170,29 @@ copy_install_script() {
   local install_script="$bin_dir/install-$APP_DIR"
   echo "Copying install script to $install_script"
   mkdir -p "$bin_dir"
-  cp "$SCRIPT_PATH" "$install_script"
+  
+  # Check if we're running from a pipe (wget/curl | bash)
+  if [ -t 0 ] || [ -f "$SCRIPT_PATH" ]; then
+    # Running from file or interactive terminal
+    cp "$SCRIPT_PATH" "$install_script"
+  else
+    # Running from pipe, download the full script from GitHub
+    echo "Downloading full install script from GitHub..."
+    if curl -s -L "https://raw.githubusercontent.com/hananf11/cursor-install/main/install.sh" -o "$install_script"; then
+      echo "Successfully downloaded full install script"
+    else
+      echo "Failed to download from GitHub, creating minimal script instead"
+      cat << 'EOF' > "$install_script"
+#!/bin/bash
+# This is a minimal install script for $APP_NAME
+# The full install script was run via pipe and could not be downloaded
+echo "This is a minimal install script for $APP_NAME"
+echo "To reinstall, download the full install script from the source"
+echo "or run the original installation command again."
+EOF
+    fi
+  fi
+  
   chmod +x "$install_script"
 }
 
