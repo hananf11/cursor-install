@@ -234,8 +234,10 @@ if [ -f "\$install_base/$APP_DIR/installed_files.txt" ]; then
   done < "\$install_base/$APP_DIR/installed_files.txt"
 fi
 
-rm -f "\$uninstall_script"
+# Remove install script
 rm -f "\$bin_dir/install-$APP_DIR"
+
+# Remove installation directory and tracking files
 rm -rf "\$install_base/$APP_DIR"
 
 if [ "\$LOCAL_INSTALL" = false ]; then
@@ -244,6 +246,10 @@ if [ "\$LOCAL_INSTALL" = false ]; then
 fi
 
 echo "$APP_NAME has been uninstalled."
+
+# Remove the uninstall script last (self-deletion)
+# Use a background process to ensure the script can complete before self-deletion
+( sleep 0.1; rm -f "\$uninstall_script" ) &
 EOF
   chmod +x "$uninstall_script"
 }

@@ -64,4 +64,4 @@ sudo /usr/local/bin/install-cursor
 3. Adds to application menu with Uninstall/Update actions
 4. Creates uninstall script for easy removal
 
-The script is safe to run multiple times - it will uninstall any existing version before installing the new one. 
+The script is safe to run multiple times - it will uninstall any existing version before installing the new one.
