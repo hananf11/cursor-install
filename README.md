@@ -1,6 +1,27 @@
 # Cursor AppImage Installer
 
 A simple bash script to install Cursor (AI-powered code editor) on Linux.
+Installing cursor on linux is unessasarly hard, this script makes it super easy. You can install it system-wide or user-specific.
+
+## Quick Install (Single Command)
+
+**System-wide installation:**
+```bash
+# Using curl
+curl -sSL https://raw.githubusercontent.com/hananf11/cursor-install/main/install.sh | sudo bash
+
+# Using wget
+wget -qO- https://raw.githubusercontent.com/hananf11/cursor-install/main/install.sh | sudo bash
+```
+
+**User-specific installation:**
+```bash
+# Using curl
+curl -sSL https://raw.githubusercontent.com/hananf11/cursor-install/main/install.sh | bash -- --local
+
+# Using wget
+wget -qO- https://raw.githubusercontent.com/hananf11/cursor-install/main/install.sh | bash -- --local
+```
 
 ## Quick Start
 
